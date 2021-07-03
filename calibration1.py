@@ -160,6 +160,22 @@ def solvePnP(path, mtx, dist):
     return ret, rvec, tvec, image_points[0]
 
 
+def getMatrix(rvec, tvec):
+    """获取旋转矩阵和平移矩阵组成的齐次矩阵
+
+    Args:
+        rvec (np.array): 旋转向量
+        tvec (np.array): 平移向量
+
+    Returns:
+        np.array: 齐次矩阵
+    """
+    # 罗德里格斯变换
+    rotation_m, _ = cv2.Rodrigues(rvec)
+    rotation_t = np.hstack([rotation_m, tvec])
+    return np.vstack([rotation_t, np.array([[0, 0, 0, 1]])])
+
+
 def drawAxis(path, mtx, dist, rvec, tvec, o):
     """绘制坐标系轴
 
