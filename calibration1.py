@@ -5,6 +5,7 @@ import numpy as np
 import cv2
 
 DEBUG = True
+CALIBRATE = True
 CURRENT_PATH = os.path.split(os.path.realpath(__file__))[0]
 
 # 设置寻找亚像素角点的参数，采用的停止准则是最大循环次数30和最大误差容限0.001
@@ -21,12 +22,16 @@ def main():
     data_file = f'{CURRENT_PATH}/checkerboard.npz'
     test_file = f'{CURRENT_PATH}/data/Image_20210703113347256.bmp'
 
-    ret = calibrate(f'{CURRENT_PATH}/data', data_file)
-    if not ret:
-        return
+    if CALIBRATE:
+        ret = calibrate(f'{CURRENT_PATH}/data', data_file)
+        if not ret:
+            return
 
     with np.load(data_file) as X:
-        mtx, dist = [X[i] for i in ('mtx', 'dist')]
+        mtx, dist, mapx, mapy, roi = [X[i]
+                                      for i in ('mtx', 'dist', 'mapx', 'mapy', 'roi')]
+
+    showUndistortImage(test_file, mapx, mapy, roi)
 
     ret, rvec, tvec, o = solvePnP(test_file, mtx, dist)
     if not ret:
@@ -60,8 +65,15 @@ def calibrate(data_path, path):
     if not ret:
         return ret
 
-    # 保存内参，畸变矩阵
-    np.savez(path, mtx=mtx, dist=dist)
+    # 获取优化相机矩阵，alpha=0：使用最小不需要的像素返回校正的图像，alpha=1：所有的像素都保留下来，并且包括一些额外的黑色图像
+    newMtx, roi = cv2.getOptimalNewCameraMatrix(mtx, dist, size, 0, size)
+
+    # 计算映射函数
+    mapx, mapy = cv2.initUndistortRectifyMap(
+        mtx, dist, None, newMtx, size, cv2.CV_32FC1)
+
+    # 保存内参，畸变矩阵, 映射函数，感兴趣区域
+    np.savez(path, mtx=mtx, dist=dist, mapx=mapx, mapy=mapy, roi=roi)
 
     # 计算误差
     mean_error = meanError(
@@ -101,10 +113,7 @@ def findChessboardCorners(path):
 
     if DEBUG:
         cv2.drawChessboardCorners(image, (x_nums, y_nums), corners, ret)
-        cv2.namedWindow(path, cv2.WINDOW_NORMAL)
-        cv2.imshow(path, image)
-        cv2.waitKey(0)
-        cv2.destroyWindow(path)
+        showImage(path, image)
 
     return ret, size, world_points, corners
 
@@ -147,7 +156,7 @@ def solvePnP(path, mtx, dist):
     """,
     ret, _, world_points, image_points = findChessboardCorners(path)
     if not ret:
-        return ret
+        return ret, None, None, None
 
     # 获取外参，获得的旋转矩阵是向量，是3×1的矩阵，想要还原回3×3的矩阵，需要罗德里格斯变换
     ret, rvec, tvec, _ = cv2.solvePnPRansac(
@@ -156,6 +165,26 @@ def solvePnP(path, mtx, dist):
         return ret, None, None, None
 
     return ret, rvec, tvec, image_points[0]
+
+
+def undistort(path, mapx, mapy, roi):
+    """矫正畸变
+
+    Args:
+        path (string): 图像文件路径
+        mapx (np.array): 映射函数1
+        mapy (np.array): 映射函数2
+        roi (tuple): 感兴趣区域
+
+    Returns:
+        np.array: 图像
+    """
+    image = cv2.imread(path)
+    image = cv2.remap(image, mapx, mapy, cv2.INTER_LINEAR)
+
+    x, y, w, h = roi
+    image = image[y:y+h, x:x+w]
+    return image
 
 
 def getMatrix(rvec, tvec):
@@ -195,10 +224,7 @@ def drawAxis(path, mtx, dist, rvec, tvec, o):
     image = drawLine(image, o.ravel(), image_points[2].ravel(), (0, 0, 255), 5)
 
     if DEBUG:
-        cv2.namedWindow(path, cv2.WINDOW_NORMAL)
-        cv2.imshow(path, image)
-        cv2.waitKey(0)
-        cv2.destroyWindow(path)
+        showImage(path, image)
 
 
 def drawLine(image, pt1, pt2, color, width):
@@ -216,6 +242,32 @@ def drawLine(image, pt1, pt2, color, width):
     """
     return cv2.line(image, (int(pt1[0]), int(pt1[1])),
                     (int(pt2[0]), int(pt2[1])), color, width)
+
+
+def showUndistortImage(path, mapx, mapy, roi):
+    """显示矫正畸变图像
+
+    Args:
+        path (string): 图像文件路径
+        mapx (np.array): 映射函数1
+        mapy (np.array): 映射函数2
+        roi (tuple): 感兴趣区域
+    """
+    image = undistort(path, mapx, mapy, roi)
+    showImage(path, image)
+
+
+def showImage(name, image):
+    """显示图像
+
+    Args:
+        name (string): 名称
+        image (np.array): 图像
+    """
+    cv2.namedWindow(name, cv2.WINDOW_NORMAL)
+    cv2.imshow(name, image)
+    cv2.waitKey(0)
+    cv2.destroyWindow(name)
 
 
 if __name__ == '__main__':
