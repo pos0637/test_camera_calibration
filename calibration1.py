@@ -21,11 +21,9 @@ def main():
     data_file = f'{CURRENT_PATH}/checkerboard.npz'
     test_file = f'{CURRENT_PATH}/data/Image_20210703113347256.bmp'
 
-    '''
     ret = calibrate(f'{CURRENT_PATH}/data', data_file)
     if not ret:
         return
-    '''
 
     with np.load(data_file) as X:
         mtx, dist = [X[i] for i in ('mtx', 'dist')]
@@ -94,7 +92,7 @@ def findChessboardCorners(path):
     # 查找角点
     ret, corners = cv2.findChessboardCorners(gray, (x_nums, y_nums), None)
     if not ret:
-        return ret
+        return ret, None, None, None
 
     # 获取更精确的角点位置
     corners2 = cv2.cornerSubPix(gray, corners, (5, 5), (-1, -1), criteria)
@@ -155,7 +153,7 @@ def solvePnP(path, mtx, dist):
     ret, rvec, tvec, _ = cv2.solvePnPRansac(
         world_points, image_points, mtx, dist)
     if not ret:
-        return ret
+        return ret, None, None, None
 
     return ret, rvec, tvec, image_points[0]
 
