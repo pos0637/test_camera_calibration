@@ -1,4 +1,5 @@
 # -*- coding:utf-8 -*-
+import sys
 import os
 import glob
 import numpy as np
@@ -19,11 +20,12 @@ world_point_distance = 15
 
 
 def main():
-    data_file = f'{CURRENT_PATH}/checkerboard.npz'
-    test_file = f'{CURRENT_PATH}/data/Image_20210703113347256.bmp'
+    path = CURRENT_PATH if len(sys.argv) == 1 else sys.argv[1]
+    data_file = f'{path}/checkerboard.npz'
+    test_file = f'{path}/data/Image_20210703113347256.bmp'
 
     if CALIBRATE:
-        ret = calibrate(f'{CURRENT_PATH}/data', data_file)
+        ret = calibrate(f'{path}/data', data_file)
         if not ret:
             return
 
