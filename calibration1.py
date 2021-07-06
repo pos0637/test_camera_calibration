@@ -4,9 +4,10 @@ import os
 import glob
 import numpy as np
 import cv2
+import cv2.aruco as aruco
 
-DEBUG = True
-CALIBRATE = True
+DEBUG = False
+CALIBRATE = False
 CURRENT_PATH = os.path.split(os.path.realpath(__file__))[0]
 
 # 设置寻找亚像素角点的参数，采用的停止准则是最大循环次数30和最大误差容限0.001
@@ -22,24 +23,81 @@ world_point_distance = 15
 def main():
     path = CURRENT_PATH if len(sys.argv) == 1 else sys.argv[1]
     data_file = f'{path}/checkerboard.npz'
-    test_file = f'{path}/data/Image_20210703113347256.bmp'
 
     if CALIBRATE:
-        ret = calibrate(f'{path}/data', data_file)
+        ret = calibrate(f'{path}/data1', data_file)
         if not ret:
             return
 
+    testAruco(path)
+
+
+def testUndistort(path):
+    """测试矫正畸变
+
+    Args:
+        path (string): 路径
+    """
+    data_file = f'{path}/checkerboard.npz'
+    test_file = f'{path}/data2/Image_20210705142810735.bmp'
+
     with np.load(data_file) as X:
-        mtx, dist, mapx, mapy, roi = [X[i]
-                                      for i in ('mtx', 'dist', 'mapx', 'mapy', 'roi')]
+        _, _, mapx, mapy, roi = [X[i]
+                                 for i in ('mtx', 'dist', 'mapx', 'mapy', 'roi')]
 
     showUndistortImage(test_file, mapx, mapy, roi)
+
+
+def testSolvePnP(path):
+    """测试检测位姿
+
+    Args:
+        path (string): 路径
+    """
+    data_file = f'{path}/checkerboard.npz'
+    test_file = f'{path}/data2/Image_20210705142810735.bmp'
+
+    with np.load(data_file) as X:
+        mtx, dist, _, _, _ = [X[i]
+                              for i in ('mtx', 'dist', 'mapx', 'mapy', 'roi')]
 
     ret, rvec, tvec, o = solvePnP(test_file, mtx, dist)
     if not ret:
         return
 
     drawAxis(test_file, mtx, dist, rvec, tvec, o)
+
+
+def testAruco(path):
+    """测试ArUco标记
+
+    Args:
+        path (string): 路径
+    """
+    data_file = f'{path}/checkerboard.npz'
+    test_file = f'{path}/data2/Image_20210706193058166.bmp'
+
+    with np.load(data_file) as X:
+        mtx, dist, _, _, _ = [X[i]
+                              for i in ('mtx', 'dist', 'mapx', 'mapy', 'roi')]
+
+    image = cv2.imread(test_file)
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    aruco_dict = aruco.Dictionary_get(aruco.DICT_7X7_100)
+    parameters = aruco.DetectorParameters_create()
+    corners, ids, _ = aruco.detectMarkers(
+        gray, aruco_dict, parameters=parameters)
+    if ids is None:
+        return
+
+    rvec, tvec, _ = aruco.estimatePoseSingleMarkers(
+        corners, 0.1, mtx, dist)
+    for i in range(rvec.shape[0]):
+        aruco.drawAxis(image, mtx, dist, rvec[i, :, :], tvec[i, :, :], 0.03)
+        aruco.drawDetectedMarkers(image, corners)
+        print(f'tvec: {tvec[i, :, :]}')
+
+    showImage(test_file, image)
 
 
 def calibrate(data_path, path):
