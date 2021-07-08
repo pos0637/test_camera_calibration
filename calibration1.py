@@ -6,7 +6,7 @@ import numpy as np
 import cv2
 import cv2.aruco as aruco
 
-DEBUG = False
+DEBUG = True
 CALIBRATE = False
 CURRENT_PATH = os.path.split(os.path.realpath(__file__))[0]
 
@@ -25,7 +25,7 @@ def main():
     data_file = f'{path}/checkerboard.npz'
 
     if CALIBRATE:
-        ret = calibrate(f'{path}/data1', data_file)
+        ret = calibrate(f'{path}/data', data_file)
         if not ret:
             return
 
@@ -73,31 +73,28 @@ def testAruco(path):
 
     Args:
         path (string): 路径
+
+    Returns:
+        (bool, np.array, np.array): 是否成功, 旋转向量，平移向量
     """
     data_file = f'{path}/checkerboard.npz'
-    test_file = f'{path}/data2/Image_20210706193058166.bmp'
+    test_file1 = f'{path}/data3/Image_20150424073400583.bmp'
+    test_file2 = f'{path}/data3/Image_20150424074631578.bmp'
 
     with np.load(data_file) as X:
         mtx, dist, _, _, _ = [X[i]
                               for i in ('mtx', 'dist', 'mapx', 'mapy', 'roi')]
 
-    image = cv2.imread(test_file)
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    aruco_dict = aruco.Dictionary_get(aruco.DICT_7X7_100)
-    parameters = aruco.DetectorParameters_create()
-    corners, ids, _ = aruco.detectMarkers(
-        gray, aruco_dict, parameters=parameters)
-    if ids is None:
+    ret, _, tvec1 = findAruco(test_file1, mtx, dist)
+    if not ret:
         return
 
-    rvec, tvec, _ = aruco.estimatePoseSingleMarkers(
-        corners, 0.1, mtx, dist)
-    for i in range(rvec.shape[0]):
-        aruco.drawAxis(image, mtx, dist, rvec[i, :, :], tvec[i, :, :], 0.03)
-        aruco.drawDetectedMarkers(image, corners)
-        print(f'tvec: {tvec[i, :, :]}')
+    ret, _, tvec2 = findAruco(test_file2, mtx, dist)
+    if not ret:
+        return
 
-    showImage(test_file, image)
+    distance = np.linalg.norm(tvec2 - tvec1)
+    print(f'distance: {distance}')
 
 
 def calibrate(data_path, path):
@@ -245,6 +242,39 @@ def undistort(path, mapx, mapy, roi):
     x, y, w, h = roi
     image = image[y:y+h, x:x+w]
     return image
+
+
+def findAruco(path, mtx, dist):
+    """查找ArUco标记
+
+    Args:
+        path (string): 路径
+        mtx (np.array): 内参
+        dist (np.array): 畸变参数
+
+    Returns:
+        (bool, np.array, np.array): 是否成功, 旋转向量，平移向量
+    """
+    image = cv2.imread(path)
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    aruco_dict = aruco.Dictionary_get(aruco.DICT_4X4_100)
+    parameters = aruco.DetectorParameters_create()
+    corners, ids, _ = aruco.detectMarkers(
+        gray, aruco_dict, parameters=parameters)
+    if ids is None:
+        return False, None, None
+
+    rvec, tvec, _ = aruco.estimatePoseSingleMarkers(
+        corners, 0.1, mtx, dist)
+    for i in range(rvec.shape[0]):
+        aruco.drawAxis(image, mtx, dist, rvec[i, :, :], tvec[i, :, :], 0.03)
+        aruco.drawDetectedMarkers(image, corners)
+        print(f'tvec: {tvec[i, :, :]}')
+
+    if DEBUG:
+        showImage(path, image)
+
+    return True, rvec[0, :, :], tvec[0, :, :]
 
 
 def getMatrix(rvec, tvec):
