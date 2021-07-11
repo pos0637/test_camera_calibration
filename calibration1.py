@@ -6,7 +6,7 @@ import numpy as np
 import cv2
 import cv2.aruco as aruco
 
-DEBUG = True
+DEBUG = False
 CALIBRATE = False
 CURRENT_PATH = os.path.split(os.path.realpath(__file__))[0]
 
@@ -78,18 +78,18 @@ def testAruco(path):
         (bool, np.array, np.array): 是否成功, 旋转向量，平移向量
     """
     data_file = f'{path}/checkerboard.npz'
-    test_file1 = f'{path}/data3/Image_20150424073400583.bmp'
-    test_file2 = f'{path}/data3/Image_20150424074631578.bmp'
+    test_file1 = f'{path}/data3/Image_20150427031104898.bmp'
+    test_file2 = f'{path}/data3/Image_20150427031225379.bmp'
 
     with np.load(data_file) as X:
-        mtx, dist, _, _, _ = [X[i]
-                              for i in ('mtx', 'dist', 'mapx', 'mapy', 'roi')]
+        mtx, dist, mapx, mapy, roi = [X[i]
+                                      for i in ('mtx', 'dist', 'mapx', 'mapy', 'roi')]
 
-    ret, _, tvec1 = findAruco(test_file1, mtx, dist)
+    ret, _, tvec1 = findAruco(test_file1, mtx, dist, mapx, mapy, roi)
     if not ret:
         return
 
-    ret, _, tvec2 = findAruco(test_file2, mtx, dist)
+    ret, _, tvec2 = findAruco(test_file2, mtx, dist, mapx, mapy, roi)
     if not ret:
         return
 
@@ -244,13 +244,16 @@ def undistort(path, mapx, mapy, roi):
     return image
 
 
-def findAruco(path, mtx, dist):
+def findAruco(path, mtx, dist, mapx, mapy, roi):
     """查找ArUco标记
 
     Args:
         path (string): 路径
         mtx (np.array): 内参
         dist (np.array): 畸变参数
+        mapx (np.array): 映射函数1
+        mapy (np.array): 映射函数2
+        roi (tuple): 感兴趣区域
 
     Returns:
         (bool, np.array, np.array): 是否成功, 旋转向量，平移向量
@@ -265,7 +268,7 @@ def findAruco(path, mtx, dist):
         return False, None, None
 
     rvec, tvec, _ = aruco.estimatePoseSingleMarkers(
-        corners, 0.1, mtx, dist)
+        corners, 0.096, mtx, dist)
     for i in range(rvec.shape[0]):
         aruco.drawAxis(image, mtx, dist, rvec[i, :, :], tvec[i, :, :], 0.03)
         aruco.drawDetectedMarkers(image, corners)
