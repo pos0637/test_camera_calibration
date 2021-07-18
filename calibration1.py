@@ -29,7 +29,7 @@ def main():
         if not ret:
             return
 
-    testAruco(path)
+    testMovie(path)
 
 
 def testUndistort(path):
@@ -73,28 +73,54 @@ def testAruco(path):
 
     Args:
         path (string): 路径
-
-    Returns:
-        (bool, np.array, np.array): 是否成功, 旋转向量，平移向量
     """
     data_file = f'{path}/checkerboard.npz'
-    test_file1 = f'{path}/data3/Image_20150427031104898.bmp'
-    test_file2 = f'{path}/data3/Image_20150427031225379.bmp'
+    test_file1 = f'{path}/data4/Image_20150424073400583.bmp'
+    test_file2 = f'{path}/data4/Image_20150424074631578.bmp'
 
     with np.load(data_file) as X:
         mtx, dist, mapx, mapy, roi = [X[i]
                                       for i in ('mtx', 'dist', 'mapx', 'mapy', 'roi')]
 
-    ret, _, tvec1 = findAruco(test_file1, mtx, dist, mapx, mapy, roi)
+    ret, _, tvec1, _ = findAruco(test_file1, mtx, dist, mapx, mapy, roi)
     if not ret:
         return
 
-    ret, _, tvec2 = findAruco(test_file2, mtx, dist, mapx, mapy, roi)
+    ret, _, tvec2, _ = findAruco(test_file2, mtx, dist, mapx, mapy, roi)
     if not ret:
         return
 
     distance = np.linalg.norm(tvec2 - tvec1)
     print(f'distance: {distance}')
+
+
+def testMovie(path):
+    """测试录像
+
+    Args:
+        path (string): 路径
+    """
+    data_file = f'{path}/checkerboard.npz'
+    test_file = f'{path}/data5/test1.avi'
+
+    with np.load(data_file) as X:
+        mtx, dist, mapx, mapy, roi = [X[i]
+                                      for i in ('mtx', 'dist', 'mapx', 'mapy', 'roi')]
+
+    capture = cv2.VideoCapture(test_file)
+    while True:
+        success, data = capture.read()
+        if not success:
+            break
+
+        ret, _, _, image = findArucoFromImage(
+            data.copy(), mtx, dist, mapx, mapy, roi)
+        if not ret:
+            continue
+
+        showImage2(test_file, data, image)
+
+    capture.release()
 
 
 def calibrate(data_path, path):
@@ -256,16 +282,33 @@ def findAruco(path, mtx, dist, mapx, mapy, roi):
         roi (tuple): 感兴趣区域
 
     Returns:
-        (bool, np.array, np.array): 是否成功, 旋转向量，平移向量
+        (bool, np.array, np.array, np.array): 是否成功, 旋转向量，平移向量，定位标记图像
     """
     image = cv2.imread(path)
+    return findArucoFromImage(image, mtx, dist, mapx, mapy, roi)
+
+
+def findArucoFromImage(image, mtx, dist, mapx, mapy, roi):
+    """查找ArUco标记
+
+    Args:
+        image (np.array): 图像
+        mtx (np.array): 内参
+        dist (np.array): 畸变参数
+        mapx (np.array): 映射函数1
+        mapy (np.array): 映射函数2
+        roi (tuple): 感兴趣区域
+
+    Returns:
+        (bool, np.array, np.array, np.array): 是否成功, 旋转向量，平移向量，定位标记图像
+    """
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     aruco_dict = aruco.Dictionary_get(aruco.DICT_4X4_100)
     parameters = aruco.DetectorParameters_create()
     corners, ids, _ = aruco.detectMarkers(
         gray, aruco_dict, parameters=parameters)
     if ids is None:
-        return False, None, None
+        return False, None, None, None
 
     rvec, tvec, _ = aruco.estimatePoseSingleMarkers(
         corners, 0.096, mtx, dist)
@@ -275,9 +318,9 @@ def findAruco(path, mtx, dist, mapx, mapy, roi):
         print(f'tvec: {tvec[i, :, :]}')
 
     if DEBUG:
-        showImage(path, image)
+        showImage('findAruco', image)
 
-    return True, rvec[0, :, :], tvec[0, :, :]
+    return True, rvec[0, :, :], tvec[0, :, :], image
 
 
 def getMatrix(rvec, tvec):
@@ -358,6 +401,21 @@ def showImage(name, image):
         image (np.array): 图像
     """
     cv2.namedWindow(name, cv2.WINDOW_NORMAL)
+    cv2.imshow(name, image)
+    cv2.waitKey(0)
+    cv2.destroyWindow(name)
+
+
+def showImage2(name, image1, image2):
+    """显示图像
+
+    Args:
+        name (string): 名称
+        image1 (np.array): 图像
+        image2 (np.array): 图像
+    """
+    cv2.namedWindow(name, cv2.WINDOW_NORMAL)
+    image = np.hstack([image1, image2])
     cv2.imshow(name, image)
     cv2.waitKey(0)
     cv2.destroyWindow(name)
