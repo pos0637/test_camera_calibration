@@ -1,7 +1,11 @@
 # -*- coding:utf-8 -*-
 import sys
 import os
+from concurrent.futures import ThreadPoolExecutor
+import threading
 import glob
+import time
+from functools import wraps
 import numpy as np
 import cv2
 import cv2.aruco as aruco
@@ -20,6 +24,18 @@ y_nums = 9 - 1
 world_point_distance = 15
 
 
+def performance(fn):
+    """计算性能的修饰器"""
+    @wraps(fn)
+    def measurePerformance(*args, **kwargs):
+        t1 = time.time()
+        result = fn(*args, **kwargs)
+        t2 = time.time()
+        print(f'{fn.__name__}: {t2 - t1: .5f}s')
+        return result
+    return measurePerformance
+
+
 def main():
     path = CURRENT_PATH if len(sys.argv) == 1 else sys.argv[1]
     data_file = f'{path}/checkerboard.npz'
@@ -29,7 +45,7 @@ def main():
         if not ret:
             return
 
-    testMovie(path)
+    testArucos(path)
 
 
 def testUndistort(path):
@@ -92,6 +108,28 @@ def testAruco(path):
 
     distance = np.linalg.norm(tvec2 - tvec1)
     print(f'distance: {distance}')
+
+
+@performance
+def testArucos(path):
+    """测试ArUco标记
+
+    Args:
+        path (string): 路径
+    """
+    data_file = f'{path}/checkerboard.npz'
+    test_file1 = f'{path}/data5/15.bmp'
+
+    with np.load(data_file) as X:
+        mtx, dist, mapx, mapy, roi = [X[i]
+                                      for i in ('mtx', 'dist', 'mapx', 'mapy', 'roi')]
+
+    image = cv2.imread(test_file1)
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        results = pool.map(lambda _: findArucoFromImage(
+            image, mtx, dist, mapx, mapy, roi), [None for i in range(30)])
+        for _ in results:
+            pass
 
 
 def testMovie(path):
@@ -312,12 +350,12 @@ def findArucoFromImage(image, mtx, dist, mapx, mapy, roi):
 
     rvec, tvec, _ = aruco.estimatePoseSingleMarkers(
         corners, 0.096, mtx, dist)
-    for i in range(rvec.shape[0]):
-        aruco.drawAxis(image, mtx, dist, rvec[i, :, :], tvec[i, :, :], 0.03)
-        aruco.drawDetectedMarkers(image, corners)
-        print(f'tvec: {tvec[i, :, :]}')
-
     if DEBUG:
+        for i in range(rvec.shape[0]):
+            aruco.drawAxis(image, mtx, dist,
+                           rvec[i, :, :], tvec[i, :, :], 0.03)
+            aruco.drawDetectedMarkers(image, corners)
+            print(f'tvec: {tvec[i, :, :]}')
         showImage('findAruco', image)
 
     return True, rvec[0, :, :], tvec[0, :, :], image
